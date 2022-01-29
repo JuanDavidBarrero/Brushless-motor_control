@@ -11,8 +11,14 @@ sensors_event_t a, g, temp;
 Servo motorRigth;
 Servo motorLeft;
 
-hw_timer_t * timer = NULL;
+hw_timer_t *timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+float pwmLeft, pwmRight;
+float kp, ki, accel_ang_y;
+float throttle = 1000;
+float setpoint = 0.0;
+float error, output, up, ui;
 
 void initMPU()
 {
@@ -28,9 +34,15 @@ void initMPU()
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 }
 
-void IRAM_ATTR onTimer() {
+void IRAM_ATTR onTimer()
+{
   portENTER_CRITICAL_ISR(&timerMux);
-  Serial.println("timer");
+  error = setpoint - accel_ang_y;
+  up = kp * error;
+  ui = ui + ki * error;
+  output = up + ui;
+  output=constrain(output, -1000, 1000);
+  ui=constrain(ui, -1000, 1000);
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
@@ -47,7 +59,6 @@ void setup()
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 30000, true);
   timerAlarmEnable(timer);
-
 }
 
 void loop()
@@ -55,10 +66,14 @@ void loop()
 
   mpu.getEvent(&a, &g, &temp);
 
-  float accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
+  pwmLeft = throttle + output;
+  pwmRight = throttle - output;
 
-  motorRigth.writeMicroseconds(1000);
-  motorLeft.writeMicroseconds(1000);
-  Serial.printf("El angulo en y es %4.2f \n", accel_ang_y);
+  pwmLeft=constrain(pwmLeft,1000,2000);
+  pwmRight=constrain(pwmRight,1000,2000);
 
+  accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
+
+  motorRigth.writeMicroseconds(pwmRight);
+  motorLeft.writeMicroseconds(pwmLeft);
 }
