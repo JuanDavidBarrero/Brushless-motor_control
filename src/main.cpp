@@ -15,10 +15,14 @@ hw_timer_t *timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 float pwmLeft, pwmRight;
-float kp, ki, accel_ang_y;
+float accel_ang_y;
+float kp = 10;
+float ki = 0.05;
 float throttle = 1000;
 float setpoint = 0.0;
-float error, output, up, ui;
+float output = 0.0;
+float error, up, ui;
+bool timerup = false;
 
 void initMPU()
 {
@@ -37,12 +41,7 @@ void initMPU()
 void IRAM_ATTR onTimer()
 {
   portENTER_CRITICAL_ISR(&timerMux);
-  error = setpoint - accel_ang_y;
-  up = kp * error;
-  ui = ui + ki * error;
-  output = up + ui;
-  output=constrain(output, -1000, 1000);
-  ui=constrain(ui, -1000, 1000);
+  timerup = true;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
@@ -57,23 +56,35 @@ void setup()
 
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 30000, true);
+  timerAlarmWrite(timer, 500000, true);
   timerAlarmEnable(timer);
 }
 
 void loop()
 {
+  if (timerup)
+  {
+    mpu.getEvent(&a, &g, &temp);
+    accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
 
-  mpu.getEvent(&a, &g, &temp);
+    error = setpoint - accel_ang_y;
+    up = kp * error;
+    ui = ui + ki * error;
+    output = up + ui;
+    output = constrain(output, -1000, 1000);
+    ui = constrain(ui, -1000, 1000);
 
-  pwmLeft = throttle + output;
-  pwmRight = throttle - output;
+    pwmLeft = throttle + output;
+    pwmRight = throttle - output;
 
-  pwmLeft=constrain(pwmLeft,1000,2000);
-  pwmRight=constrain(pwmRight,1000,2000);
+    pwmLeft = constrain(pwmLeft, 1000, 2000);
+    pwmRight = constrain(pwmRight, 1000, 2000);
 
-  accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
-
-  motorRigth.writeMicroseconds(pwmRight);
-  motorLeft.writeMicroseconds(pwmLeft);
+    motorRigth.writeMicroseconds((int)pwmRight);
+    motorLeft.writeMicroseconds((int)pwmLeft);
+    Serial.printf("el valor de salida -> %4.2f\n", output);
+    Serial.printf("el valor de pwmRigth -> %i\n", (int)pwmRight);
+    Serial.printf("el valor de pwmLeft -> %i\n", (int)pwmLeft);
+    timerup = false;
+  }
 }
