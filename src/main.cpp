@@ -15,14 +15,29 @@ hw_timer_t *timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 float pwmLeft, pwmRight;
-float accel_ang_y;
+const int motorRigthPin = 25;
+const int motorLeftPin = 26;
+const int mixSpeed = 1000;
+const int maxSpeed = 2000;
+float throttle = 1400;
+
+#define RAD_A_DEG  57.295779  // 180/PI
+#define Gyro_Factor 131.0 //
+float accel_ang_y, ang_y;
+float ang_y_prev;
+
 float kp = 0.5;
 float ki = 0.09;
-float throttle = 1400;
 float setpoint = 0.0;
 float output = 0.0;
 float error, up, ui;
+
+#define Ts 0.01
+#define timeFactor 1000000
 bool timerup = false;
+
+float alpha = 0.98;
+
 
 void initMPU()
 {
@@ -55,25 +70,26 @@ void starMotors()
   }
 }
 
+
 void setup()
 {
   Serial.begin(115200);
 
   initMPU();
 
-  motorRigth.attach(25);
-  motorLeft.attach(26);
+  motorRigth.attach(motorRigthPin);
+  motorLeft.attach(motorLeftPin);
 
   Serial.println("empezando motores");
-  delay(6000);
+  // delay(5000); //TODO:
 
-  starMotors();
+  // starMotors();
   Serial.println("Motores iniciados");
-  delay(3000);
+  // delay(3000); //TODO:
 
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 100000, true);
+  timerAlarmWrite(timer, Ts*timeFactor, true);
   timerAlarmEnable(timer);
 }
 
@@ -84,25 +100,28 @@ void loop()
   {
 
     mpu.getEvent(&a, &g, &temp);
-    accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
+
+    accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * RAD_A_DEG;
+    ang_y = alpha * (ang_y_prev + (g.gyro.y / Gyro_Factor) * Ts) + (1-alpha) * accel_ang_y;
 
     error = setpoint - accel_ang_y;
     up = kp * error;
     ui = ui + ki * error;
     output = up + ui;
-    output = constrain(output, -1000, 1000);
-    ui = constrain(ui, -1000, 1000);
+    output = constrain(output, -mixSpeed, maxSpeed);
+    ui = constrain(ui, -mixSpeed, maxSpeed);
 
     pwmLeft = throttle + output;
     pwmRight = throttle - output;
 
-    pwmLeft = constrain(pwmLeft, 1000, 2000);
-    pwmRight = constrain(pwmRight, 1000, 2000);
+    pwmLeft = constrain(pwmLeft, mixSpeed, maxSpeed);
+    pwmRight = constrain(pwmRight, mixSpeed, maxSpeed);
 
     motorRigth.writeMicroseconds((int)pwmRight);
     motorLeft.writeMicroseconds((int)pwmLeft);
-    // Serial.printf("el valor del setpoint -> %4.2f\n", setpoint);
-    Serial.printf("el valor de angulo -> %4.2f\n", output);
+
+    ang_y_prev = ang_y;
+    Serial.printf("el valor del setpoint -> %4.2f\n", ang_y);
     Serial.printf("el valor de pwmRigth -> %i\n", (int)pwmRight);
     Serial.printf("el valor de pwmLeft -> %i\n", (int)pwmLeft);
     timerup = false;
