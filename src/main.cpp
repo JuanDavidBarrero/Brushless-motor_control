@@ -16,9 +16,9 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 float pwmLeft, pwmRight;
 float accel_ang_y;
-float kp = 10;
-float ki = 0.05;
-float throttle = 1000;
+float kp = 0.5;
+float ki = 0.09;
+float throttle = 1400;
 float setpoint = 0.0;
 float output = 0.0;
 float error, up, ui;
@@ -45,6 +45,16 @@ void IRAM_ATTR onTimer()
   portEXIT_CRITICAL_ISR(&timerMux);
 }
 
+void starMotors()
+{
+  for (int dutycycle = 500; dutycycle < throttle + 50; dutycycle += 50)
+  {
+    motorLeft.writeMicroseconds(dutycycle);
+    motorRigth.writeMicroseconds(dutycycle);
+    delay(500);
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -54,16 +64,25 @@ void setup()
   motorRigth.attach(25);
   motorLeft.attach(26);
 
+  Serial.println("empezando motores");
+  delay(6000);
+
+  starMotors();
+  Serial.println("Motores iniciados");
+  delay(3000);
+
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 500000, true);
+  timerAlarmWrite(timer, 100000, true);
   timerAlarmEnable(timer);
 }
 
 void loop()
 {
+
   if (timerup)
   {
+
     mpu.getEvent(&a, &g, &temp);
     accel_ang_y = atan(a.acceleration.y / sqrt(pow(a.acceleration.x, 2) + pow(a.acceleration.z, 2))) * (180.0 / 3.14);
 
@@ -82,7 +101,8 @@ void loop()
 
     motorRigth.writeMicroseconds((int)pwmRight);
     motorLeft.writeMicroseconds((int)pwmLeft);
-    Serial.printf("el valor de salida -> %4.2f\n", output);
+    // Serial.printf("el valor del setpoint -> %4.2f\n", setpoint);
+    Serial.printf("el valor de angulo -> %4.2f\n", output);
     Serial.printf("el valor de pwmRigth -> %i\n", (int)pwmRight);
     Serial.printf("el valor de pwmLeft -> %i\n", (int)pwmLeft);
     timerup = false;
